@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Detección de movimiento — eventos agrupados + estadísticas</title>
+<style>
+  :root {
+    --bg: #111;
+    --panel: #1b1b1b;
+    --accent: #e53935;
+    --muted: #aaa;
+  }
+  body {
+    background: #222;
+    color: white;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header { width:100%; max-width:1100px; display:flex; gap:12px; align-items:center; justify-content:space-between; }
+  .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, button {
+    padding:6px 10px;
+    font-size:14px;
+    background:#333;
+    color:white;
+    border:1px solid #444;
+    border-radius:6px;
+    cursor:pointer;
+  }
+
+  #canvas {
+    border:2px solid #444;
+    background:#000;
+    max-width:100%;
+    width: 640px;
+    height: 360px;
+    display:block;
+  }
+
+  /* Panel de estadísticas */
+  #stats {
+    background: rgba(0,0,0,0.45);
+    padding: 10px;
+    border-radius: 8px;
+    font-family: monospace;
+    color: var(--muted);
+    width: 100%;
+    max-width: 1100px;
+    display:flex;
+    gap:18px;
+    align-items:center;
+    justify-content:space-between;
+    box-sizing: border-box;
+  }
+  .stat { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:120px; }
+  .stat b { color: #fff; }
+
+  /* Contenedor de eventos */
+  #captures {
+    width:100%;
+    max-width:1100px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    box-sizing: border-box;
+  }
+
+  .event {
+    background: var(--panel);
+    border:1px solid #333;
+    border-radius:8px;
+    padding:10px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .event-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+  }
+  .event-title { color:var(--muted); font-weight:600; }
+  .event-actions { display:flex; gap:8px; }
+
+  .event-images {
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    padding:6px 2px;
+  }
+  .event-images img {
+    height:120px;
+    border-radius:6px;
+    border:1px solid #444;
+    display:block;
+  }
+
+  .btn-danger { background: var(--accent); color:white; border:none; border-radius:6px; padding:6px 8px; cursor:pointer; }
+  .btn-secondary { background: #444; color:white; border:none; border-radius:6px; padding:6px 8px; cursor:pointer; }
+
+  /* small screens */
+  @media (max-width:760px) {
+    #canvas { width: 320px; height: 180px; }
+    #stats { flex-direction:column; align-items:flex-start; gap:6px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="controls">
+      <label for="cameraSelect">Cámara:</label>
+      <select id="cameraSelect"></select>
+      <button id="toggleCaptureBtn">Capturar movimientos</button>
+      <button id="clearAllBtn" title="Eliminar todos los eventos">Borrar todo</button>
+    </div>
+
+    <div style="text-align:right;">
+      <div style="font-size:18px; color:#ddd; font-weight:600">Detección de movimiento</div>
+      <div style="font-size:12px; color:var(--muted)">Canvas muestra sólo el mapa de movimiento en rojo — las imágenes guardadas son reales.</div>
+    </div>
+  </header>
+
+  <video id="video" autoplay playsinline style="display:none;"></video>
+  <canvas id="canvas"></canvas>
+
+  <div id="stats">
+    <div class="stat"><div>FPS</div><div><b id="fps">0</b></div></div>
+    <div class="stat"><div>Píxels en movimiento</div><div><b id="pixelsMoved">0</b></div></div>
+    <div class="stat"><div>Imágenes guardadas</div><div><b id="capturesCount">0</b></div></div>
+    <div class="stat"><div>Eventos</div><div><b id="eventsCount">0</b></div></div>
+    <div class="stat"><div>Movimiento</div><div><b id="movementState">No</b></div></div>
+    <div class="stat"><div>Tiempo desde última captura</div><div><b id="timeSinceLastCapture">N/A</b></div></div>
+  </div>
+
+  <main id="captures"></main>
+
+<script>
+/* ---------- CONFIGURACIÓN ---------- */
+const threshold = 130;            // umbral de diferencia por píxel (ya lo controlas)
+const minMotionPixels = 30;    // mínimo píxeles para considerar "movimiento" (ajusta según resolución)
+const maxPreFrames = 6;         // cuántos frames previos almacenamos
+const captureDuration = 2500;   // ms que seguimos capturando después del último frame con movimiento
+const captureFrameInterval = 50; // ms mínimo entre imágenes guardadas dentro de un mismo evento
+
+/* ---------- ELEMENTOS DOM ---------- */
+const cameraSelect = document.getElementById('cameraSelect');
+const toggleCaptureBtn = document.getElementById('toggleCaptureBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+const stats = {
+  fps: document.getElementById('fps'),
+  pixelsMoved: document.getElementById('pixelsMoved'),
+  capturesCount: document.getElementById('capturesCount'),
+  eventsCount: document.getElementById('eventsCount'),
+  movementState: document.getElementById('movementState'),
+  timeSinceLastCapture: document.getElementById('timeSinceLastCapture'),
+};
+
+const capturesContainer = document.getElementById('captures');
+
+/* ---------- ESTADO ---------- */
+let currentStream = null;
+let previousFrame = null;
+let preMotionFrames = []; // buffer de dataURLs (frames reales)
+let capturing = false;
+let captureActiveUntil = 0;
+let currentEvent = null;   // objeto del evento actual: { eventDiv, imagesDiv, images: [{url,ts}], startTime }
+let lastSavedTime = 0;
+let lastCaptureTime = 0;
+let capturesCount = 0;
+
+/* Stats helpers */
+let frameCount = 0;
+let lastFpsUpdate = performance.now();
+
+/* ---------- utilidades ---------- */
+function formatDateForFilename(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+/* ---------- cámaras ---------- */
+function stopStream() {
+  if (currentStream) {
+    currentStream.getTracks().forEach(t => t.stop());
+    currentStream = null;
+  }
+}
+function startStream(deviceId) {
+  stopStream();
+  const constraints = deviceId ? { video: { deviceId: { exact: deviceId } } } : { video: { facingMode: "environment" } };
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then(stream => {
+      currentStream = stream;
+      video.srcObject = stream;
+      video.play();
+    })
+    .catch(err => {
+      alert('Error al acceder a la cámara: ' + (err && err.message));
+      console.error(err);
+    });
+}
+function listarCamaras() {
+  navigator.mediaDevices.enumerateDevices()
+    .then(devices => {
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      cameraSelect.innerHTML = '';
+      videoDevices.forEach((d,i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Cámara ${i+1}`;
+        cameraSelect.appendChild(opt);
+      });
+      if (videoDevices.length) startStream(videoDevices[0].deviceId);
+    })
+    .catch(err => console.error('listarCamaras:', err));
+}
+
+/* ---------- UI control ---------- */
+cameraSelect.addEventListener('change', () => startStream(cameraSelect.value));
+toggleCaptureBtn.addEventListener('click', () => {
+  capturing = !capturing;
+  toggleCaptureBtn.textContent = capturing ? 'Detener captura' : 'Capturar movimientos';
+  // si desactivas, cierra evento actual
+  if (!capturing && currentEvent) currentEvent = null;
+});
+clearAllBtn.addEventListener('click', () => {
+  if (confirm('Eliminar todos los eventos y liberar memoria?')) {
+    capturesContainer.innerHTML = '';
+    capturesCount = 0;
+    stats.capturesCount.textContent = '0';
+    stats.eventsCount.textContent = '0';
+  }
+});
+
+/* ---------- gestionar eventos (UI + lógica) ---------- */
+function iniciarEvento() {
+  const eventDiv = document.createElement('div');
+  eventDiv.className = 'event';
+
+  const header = document.createElement('div'); header.className = 'event-header';
+  const title = document.createElement('div'); title.className = 'event-title';
+  const startTs = Date.now();
+  title.textContent = `Movimiento detectado: ${new Date(startTs).toLocaleString()}`;
+
+  const actions = document.createElement('div'); actions.className = 'event-actions';
+  const downloadBtn = document.createElement('button'); downloadBtn.className = 'btn-secondary'; downloadBtn.textContent = 'Descargar evento';
+  const deleteBtn = document.createElement('button'); deleteBtn.className = 'btn-danger'; deleteBtn.textContent = 'Eliminar evento';
+
+  actions.appendChild(downloadBtn);
+  actions.appendChild(deleteBtn);
+
+  header.appendChild(title);
+  header.appendChild(actions);
+
+  const imagesDiv = document.createElement('div'); imagesDiv.className = 'event-images';
+
+  eventDiv.appendChild(header);
+  eventDiv.appendChild(imagesDiv);
+  capturesContainer.prepend(eventDiv); // el último evento arriba
+
+  const eventObj = {
+    eventDiv,
+    imagesDiv,
+    images: [], // {url, ts}
+    startTime: startTs
+  };
+
+  // handlers
+  downloadBtn.addEventListener('click', () => downloadEventImages(eventObj));
+  deleteBtn.addEventListener('click', () => {
+    if (!confirm('Eliminar este evento y sus imágenes?')) return;
+    // actualizar contador
+    capturesCount -= eventObj.images.length;
+    if (capturesCount < 0) capturesCount = 0;
+    stats.capturesCount.textContent = String(capturesCount);
+    eventDiv.remove();
+    stats.eventsCount.textContent = String(capturesContainer.children.length);
+  });
+
+  currentEvent = eventObj;
+  stats.eventsCount.textContent = String(capturesContainer.children.length);
+  return eventObj;
+}
+
+function guardarImagenEnEvento(dataURL) {
+  // si no hay evento abierto, iniciar
+  if (!currentEvent) currentEvent = iniciarEvento();
+
+  // respetar intervalo entre capturas dentro del mismo evento
+  const ahora = Date.now();
+  if (ahora - lastSavedTime < captureFrameInterval) return false;
+
+  // crear img y añadir al evento
+  const img = document.createElement('img');
+  img.src = dataURL;
+  // accessible small preview (no descarga automática aquí)
+  currentEvent.imagesDiv.appendChild(img);
+
+  currentEvent.images.push({ url: dataURL, ts: ahora });
+
+  // actualizar contadores y tiempo
+  capturesCount++;
+  stats.capturesCount.textContent = String(capturesCount);
+  lastSavedTime = ahora;
+  lastCaptureTime = ahora;
+
+  // actualizar tiempo desde última captura inmediatamente
+  stats.timeSinceLastCapture.textContent = '0.0s';
+
+  return true;
+}
+
+/* Descargar todas las imágenes de un evento (descargas directas con nombre) */
+function downloadEventImages(eventObj) {
+  if (!eventObj || !eventObj.images.length) return;
+  const base = formatDateForFilename(eventObj.startTime);
+  // Descargar secuencialmente para reducir bloqueos de navegador (pausa pequeña)
+  eventObj.images.forEach((imgObj, i) => {
+    const idx = String(i+1).padStart(3,'0');
+    const filename = `movimiento_detectado_${base}_${idx}.png`;
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = imgObj.url;
+      a.download = filename;
+      // algunos navegadores requieren que el enlace esté en el DOM para permitir click()
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }, i * 200); // 200ms entre cada descarga
+  });
+}
+
+/* ---------- Bucle de detección ---------- */
+video.addEventListener('loadedmetadata', () => {
+  // ajustar canvas a tamaño de video
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 360;
+
+  function detectarMovimiento() {
+    // 1) dibujar el video (frame real) y guardar dataURL para captura real
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const frameRealDataURL = canvas.toDataURL('image/png');
+
+    // 2) mantener buffer circular de frames previos (reales)
+    preMotionFrames.push(frameRealDataURL);
+    if (preMotionFrames.length > maxPreFrames) preMotionFrames.shift();
+
+    // 3) obtener ImageData para comparar
+    const frame = ctx.getImageData(0,0,canvas.width,canvas.height);
+
+    let hayMovimiento = false;
+    let motionPixels = 0;
+
+    if (previousFrame) {
+      const length = frame.data.length;
+      // crear diffFrame para visualización (solo rojo donde hubo diff)
+      const diffFrame = ctx.createImageData(canvas.width, canvas.height);
+      for (let i=0; i<length; i+=4) {
+        const r = Math.abs(frame.data[i] - previousFrame.data[i]);
+        const g = Math.abs(frame.data[i+1] - previousFrame.data[i+1]);
+        const b = Math.abs(frame.data[i+2] - previousFrame.data[i+2]);
+        const avg = (r+g+b)/3;
+        if (avg > threshold) {
+          diffFrame.data[i] = 255;
+          diffFrame.data[i+1] = 0;
+          diffFrame.data[i+2] = 0;
+          diffFrame.data[i+3] = 255;
+          motionPixels++;
+        } else {
+          diffFrame.data[i+3] = 0;
+        }
+      }
+
+      // mostrar SOLO el mapa de movimiento en el canvas
+      ctx.putImageData(diffFrame, 0, 0);
+
+      if (motionPixels > minMotionPixels) {
+        hayMovimiento = true;
+      }
+    } else {
+      // Si no hay previousFrame, no mostramos diff — limpiar canvas (transparente)
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+    }
+
+    // 4) si hay movimiento: abrir evento (si capturing) y salvar pre-frames + frames dentro de la ventana
+    const ahora = Date.now();
+    if (hayMovimiento) {
+      // ampliar ventana de captura
+      captureActiveUntil = ahora + captureDuration;
+
+      if (capturing) {
+        // si no hay evento actual, iniciarlo e insertar pre-frames
+        if (!currentEvent) {
+          const ev = iniciarEvento();
+          // añadir frames previos (pueden ser varios)
+          preMotionFrames.forEach((f) => {
+            // forzamos guardar previo sin respetar interval para no perder el historial
+            // pero para no violar lastSavedTime hacemos una pequeña actualización
+            lastSavedTime = 0;
+            guardarImagenEnEvento(f);
+          });
+          // limpiar buffer
+          preMotionFrames.length = 0;
+        }
+        // guardar frame actual (respetando captureFrameInterval dentro de guardarImagenEnEvento)
+        guardarImagenEnEvento(frameRealDataURL);
+      }
+    } else if (ahora < captureActiveUntil && capturing) {
+      // estamos en la ventana post-movimiento: seguir guardando
+      guardarImagenEnEvento(frameRealDataURL);
+    } else {
+      // no hay movimiento y ventana cerrada: cerrar evento actual
+      currentEvent = null;
+    }
+
+    // 5) Estadísticas y métricas
+    frameCount++;
+    if (performance.now() - lastFpsUpdate >= 1000) {
+      stats.fps.textContent = String(frameCount);
+      frameCount = 0;
+      lastFpsUpdate = performance.now();
+
+      // actualizar tiempo desde última captura
+      if (!lastCaptureTime) {
+        stats.timeSinceLastCapture.textContent = 'N/A';
+      } else {
+        const s = ((Date.now() - lastCaptureTime)/1000).toFixed(1);
+        stats.timeSinceLastCapture.textContent = `${s}s`;
+      }
+    }
+
+    stats.pixelsMoved.textContent = String(motionPixels);
+    stats.movementState.textContent = hayMovimiento ? 'Sí' : 'No';
+    stats.capturesCount.textContent = String(capturesCount);
+    stats.eventsCount.textContent = String(capturesContainer.children.length);
+
+    // guardar frame para la próxima comparación
+    previousFrame = frame;
+
+    requestAnimationFrame(detectarMovimiento);
+  }
+
+  detectarMovimiento();
+});
+
+/* arrancar */
+listarCamaras();
+</script>
+</body>
+</html>
