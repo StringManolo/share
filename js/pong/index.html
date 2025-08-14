@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pong con IA y Mira</title>
+  <style>
+    body{margin:0;background:#061021;display:flex;align-items:center;justify-content:center;height:100vh;color:white;font-family:sans-serif}
+    canvas{background:#0b1220;border-radius:8px;display:block;width:100%;max-width:100%;height:auto;}
+    .controls{position:absolute;top:10px;left:10px;display:flex;gap:10px}
+    button{padding:6px 10px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <button id="toggleAITop">IA Top: ON</button>
+    <button id="toggleAIBottom">IA Bottom: ON</button>
+  </div>
+  <canvas id="c" width="800" height="600"></canvas>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W=canvas.width,H=canvas.height;
+
+const paddleWidth=140,paddleHeight=12,paddleSpeed=9;
+let topPaddle={x:(W-paddleWidth)/2,y:20,w:paddleWidth,h:paddleHeight};
+let bottomPaddle={x:(W-paddleWidth)/2,y:H-20-paddleHeight,w:paddleWidth,h:paddleHeight};
+let ball={x:W/2,y:H/2,r:8,vx:4*(Math.random()>0.5?1:-1),vy:4*(Math.random()>0.5?1:-1)};
+
+let scoreTop=0,scoreBottom=0;
+let keys={};
+let aiTop=true,aiBottom=true;
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+window.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;});
+window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+
+function resetBall(toTop){
+  ball.x=W/2;ball.y=H/2;
+  let speed=4+Math.random()*1.5;
+  let angle=Math.random()*Math.PI/2-Math.PI/4;
+  ball.vx=speed*Math.sin(angle)*(Math.random()>0.5?1:-1);
+  ball.vy=speed*Math.cos(angle)*(toTop?-1:1);
+}
+
+function update(){
+  if(!aiBottom){
+    if(keys['arrowleft'])bottomPaddle.x-=paddleSpeed;
+    if(keys['arrowright'])bottomPaddle.x+=paddleSpeed;
+  }else{
+    const target=ball.x-bottomPaddle.w/2;
+    bottomPaddle.x+=clamp((target-bottomPaddle.x)*0.12,-6,6);
+  }
+
+  if(!aiTop){
+    if(keys['a'])topPaddle.x-=paddleSpeed;
+    if(keys['d'])topPaddle.x+=paddleSpeed;
+  }else{
+    const target=ball.x-topPaddle.w/2;
+    topPaddle.x+=clamp((target-topPaddle.x)*0.12,-6,6);
+  }
+
+  topPaddle.x=clamp(topPaddle.x,0,W-topPaddle.w);
+  bottomPaddle.x=clamp(bottomPaddle.x,0,W-bottomPaddle.w);
+
+  ball.x+=ball.vx;ball.y+=ball.vy;
+  if(ball.x-ball.r<=0){ball.x=ball.r;ball.vx*=-1;}
+  if(ball.x+ball.r>=W){ball.x=W-ball.r;ball.vx*=-1;}
+
+  function hit(p){return ball.x+ball.r>p.x&&ball.x-ball.r<p.x+p.w&&ball.y+ball.r>p.y&&ball.y-ball.r<p.y+p.h;}
+
+  if(ball.vy<0&&hit(topPaddle)){
+    ball.y=topPaddle.y+topPaddle.h+ball.r;ball.vy*=-1;
+    let hitPos=(ball.x-(topPaddle.x+topPaddle.w/2))/(topPaddle.w/2);
+    ball.vx+=hitPos*2.2;ball.vx*=1.02;ball.vy*=1.02;
+  }
+  if(ball.vy>0&&hit(bottomPaddle)){
+    ball.y=bottomPaddle.y-ball.r;ball.vy*=-1;
+    let hitPos=(ball.x-(bottomPaddle.x+bottomPaddle.w/2))/(bottomPaddle.w/2);
+    ball.vx+=hitPos*2.2;ball.vx*=1.02;ball.vy*=1.02;
+  }
+
+  if(ball.y-ball.r<=0){scoreBottom++;resetBall(false);}
+  if(ball.y+ball.r>=H){scoreTop++;resetBall(true);}
+}
+
+function predictImpactY(bounces=true){
+  let simX=ball.x,simY=ball.y,simVX=ball.vx,simVY=ball.vy;
+  while(true){
+    simX+=simVX;simY+=simVY;
+    if(bounces){
+      if(simX-ball.r<=0){simX=ball.r;simVX*=-1;}
+      if(simX+ball.r>=W){simX=W-ball.r;simVX*=-1;}
+    } else {
+      if(simX-ball.r<=0){simX=ball.r;}
+      if(simX+ball.r>=W){simX=W-ball.r;}
+    }
+    if(simVY<0 && simY-ball.r<=topPaddle.y+topPaddle.h){
+      return {x:simX,y:topPaddle.y+topPaddle.h};
+    }
+    if(simVY>0 && simY+ball.r>=bottomPaddle.y){
+      return {x:simX,y:bottomPaddle.y};
+    }
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#7dd3fc';
+  ctx.fillRect(topPaddle.x,topPaddle.y,topPaddle.w,topPaddle.h);
+  ctx.fillRect(bottomPaddle.x,bottomPaddle.y,bottomPaddle.w,bottomPaddle.h);
+  ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='white';ctx.fillText(`Top: ${scoreTop}`,20,20);
+  ctx.fillText(`Bottom: ${scoreBottom}`,20,H-20);
+
+  // Mira verde (considera rebotes)
+  const greenImpact=predictImpactY(true);
+  ctx.strokeStyle='green';
+  ctx.beginPath();
+  ctx.moveTo(greenImpact.x,0);
+  ctx.lineTo(greenImpact.x,H);
+  ctx.stroke();
+
+  // Mira roja (sin rebotes horizontales)
+  const redImpact=predictImpactY(false);
+  ctx.strokeStyle='red';
+  ctx.beginPath();
+  ctx.moveTo(redImpact.x,0);
+  ctx.lineTo(redImpact.x,H);
+  ctx.stroke();
+}
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+resetBall(Math.random()>0.5);loop();
+
+document.getElementById('toggleAITop').onclick=()=>{
+  aiTop=!aiTop;document.getElementById('toggleAITop').textContent=`IA Top: ${aiTop?'ON':'OFF'}`;
+};
+document.getElementById('toggleAIBottom').onclick=()=>{
+  aiBottom=!aiBottom;document.getElementById('toggleAIBottom').textContent=`IA Bottom: ${aiBottom?'ON':'OFF'}`;
+};
+</script>
+</body>
+</html>
