@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Face Mesh POC con Cambio de Cámara</title>
+<style>
+  body { margin: 0; overflow: hidden; background: black; }
+  #controls {
+    position: absolute;
+    top: 10px; left: 10px;
+    background: rgba(0,0,0,0.5);
+    padding: 6px;
+    border-radius: 8px;
+    color: white;
+    z-index: 10;
+  }
+  select { padding: 4px; }
+  canvas { position: absolute; top: 0; left: 0; }
+  video { display: none; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <label for="cameraSelect">📷 Cámara:</label>
+  <select id="cameraSelect"></select>
+</div>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<!-- MediaPipe scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+
+<script>
+const videoElement = document.getElementById('video');
+const canvasElement = document.getElementById('canvas');
+const ctx = canvasElement.getContext('2d');
+const cameraSelect = document.getElementById('cameraSelect');
+
+canvasElement.width = window.innerWidth;
+canvasElement.height = window.innerHeight;
+
+let currentStream = null;
+
+// Inicializar FaceMesh
+const faceMeshModel = new FaceMesh({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+});
+
+faceMeshModel.setOptions({
+  maxNumFaces: 1,
+  refineLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+
+faceMeshModel.onResults(results => {
+  ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+  ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+  if (results.multiFaceLandmarks) {
+    for (const landmarks of results.multiFaceLandmarks) {
+      for (const point of landmarks) {
+        const x = point.x * canvasElement.width;
+        const y = point.y * canvasElement.height;
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, 2 * Math.PI);
+        ctx.fillStyle = 'red';
+        ctx.fill();
+      }
+    }
+  }
+});
+
+// 📌 Función para iniciar stream en cámara elegida
+async function startCamera(deviceId) {
+  if (currentStream) {
+    currentStream.getTracks().forEach(track => track.stop()); // detener cámara previa
+  }
+
+  const constraints = {
+    video: {
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      width: { ideal: 640 },
+      height: { ideal: 480 }
+    }
+  };
+
+  currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+  videoElement.srcObject = currentStream;
+
+  // Loop de predicción
+  async function frameLoop() {
+    await faceMeshModel.send({ image: videoElement });
+    requestAnimationFrame(frameLoop);
+  }
+  frameLoop();
+}
+
+// 📌 Listar cámaras
+async function loadCameras() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+  cameraSelect.innerHTML = "";
+  videoDevices.forEach((device, i) => {
+    const option = document.createElement('option');
+    option.value = device.deviceId;
+    option.text = device.label || `Cámara ${i+1}`;
+    cameraSelect.appendChild(option);
+  });
+
+  if (videoDevices.length > 0) {
+    startCamera(videoDevices[0].deviceId); // inicia con la primera
+  }
+}
+
+// 📌 Cambiar cámara al seleccionar
+cameraSelect.addEventListener('change', () => {
+  startCamera(cameraSelect.value);
+});
+
+// Inicializar
+loadCameras();
+</script>
+
+</body>
+</html>
