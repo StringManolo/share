@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head prefix="og:http://ogp.me/ns#">
+  <meta charset="utf-8">
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+  <title>Index.html</title>
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#ffffff">
+</head>
+
+<body>
+  <div class="cpu-arch">Cpu Arch: </div>
+
+<style>
+body {
+  background-color: white;
+}
+
+
+:root {
+  --FACTOR-AMPLIFICACION: 10000;
+  --BASE-PX: 500px;
+  --PI-VAL: var(--pi);
+  --E-VAL: var(--e);
+
+  --FpAmp-1: calc(
+    var(--FACTOR-AMPLIFICACION) * log(
+      pow(
+        sin(
+          atan2(var(--PI-VAL), 1.0001)
+        ), 5.1234567
+      )
+    ) + var(--BASE-PX)
+  );
+}
+
+.cpu-arch {
+  container-type: inline-size;
+  height: 50px;                                                                          /*width: 1300px;*/
+  width: var(--FpAmp-1);                                                                  background-color: black;
+  color: white;
+}
+
+@container (width > 1px) {
+  .cpu-arch::after {
+    content: "Unknown";
+  }
+}
+
+@container (width = 964px) {
+  .cpu-arch::after {
+    content: "Armv7 (Chromium)";
+  }
+}
+
+@container (width = 964.007px) {
+  .cpu-arch::after {
+    content: "Aarch64 (Chromium)";
+  }
+}
+
+@container (width = 1008px) {
+   .cpu-arch::after {
+     content: "Intel (Chromium)";
+   }
+ }
+
+
+@container (width = 1216px) {
+  .cpu-arch::after {
+    content: "Aarch64 (Firefox)";                                                         }
+}
+@container (width = 750.4px) {
+  .cpu-arch::after {                                                                        content: "Intel (Firefox)";
+  }
+}
+
+@container (width = 1192.67px) {
+  .cpu-arch::after {
+    content: "Armv7 (Firefox)";
+  }
+}
+</style>
+</body>
+</html>
