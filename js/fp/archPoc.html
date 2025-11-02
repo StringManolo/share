@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head prefix="og:http://ogp.me/ns#">
+  <meta charset="utf-8">
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+  <title>Index.html</title>
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#ffffff">
+</head>
+
+<body>
+  <div class="cpu-arch">Cpu Arch: </div>
+
+<style>
+body {
+  background-color: white;
+}
+
+.cpu-arch {
+  /*
+    * Intel = 1300
+    * ARM = 1301.04
+  */
+  container-type: inline-size;
+  height: 100px;
+  /*width: 1300px;*/
+  width: calc( (1px * pi * (pi * pi + pi) ) * 100  );
+  background-color: black;
+  color: white;
+}
+
+@container (width <= 1300px) {
+  .cpu-arch::before {
+    content: "Intel (div width < 1301)";
+  }
+}
+
+
+@container (width >= 1301px) {
+  .cpu-arch::before {
+    content: "ARM (div width > 1300)";
+  }
+}
+
+@container (width >= 1303px) {
+   .cpu-arch::before {
+     content: "Unknown (div width > 1302)";
+   }
+ }
+</style>
+
+<script>
+const div = document.querySelector(".cpu-arch");
+alert(`Detected width:
+
+1 - ${div.offsetWidth}
+2 - ${div.clientWidth}
+`);
+</script>
+</body>
+</html>
