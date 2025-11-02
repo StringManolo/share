@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>PoC de Fingerprinting de Arquitectura de CPU (CSS calc())</title>
+    <style>
+        /**
+         * 🧪 PRUEBAS DE DIVERGENCIA DE ARQUITECTURA EN CSS CALC() 🧪
+         *
+         * Se usan múltiples combinaciones de funciones matemáticas complejas para
+         * amplificar errores de precisión de punto flotante.
+         */
+
+        /* =========================================================================
+         * Constantes de referencia y factores de ajuste
+         * ========================================================================= */
+        :root {
+          --FACTOR-AMPLIFICACION: 10000; /* Sensibilidad (ajustable) */
+          --BASE-PX: 500px;              /* Valor base para centrar el resultado */
+          --PI-VAL: var(--pi);
+          --E-VAL: var(--e);
+        }
+
+        /* Estilos base para la visualización y la medición */
+        [class^="cpu-test-"] {
+          height: 20px;
+          margin: 5px 0;
+          background-color: rgba(255, 0, 0, 0.5); /* Color de referencia */
+          border: 1px solid black;
+          box-sizing: border-box;
+          white-space: nowrap;
+          overflow: hidden;
+          font-family: monospace;
+          color: white;
+          text-shadow: 1px 1px 2px black;
+          line-height: 18px;
+          padding-left: 5px;
+        }
+
+        /* =========================================================================
+         * 1. PRUEBAS DE TRIGONOMETRÍA PESADA
+         * ========================================================================= */
+
+        /* Prueba 1.1: log(pow(sin(atan2(PI, ...)))) - Alta divergencia esperada. */
+        .cpu-test-01 {
+          --FpAmp-1: calc(
+            var(--FACTOR-AMPLIFICACION) * log(
+              pow(
+                sin(
+                  atan2(var(--PI-VAL), 1.0001)
+                ),
+                5.1234567
+              )
+            ) + var(--BASE-PX)
+          );
+          width: var(--FpAmp-1);
+        }
+
+        /* Prueba 1.2: cos(sqrt(abs(log(tan(...))))) - Encadenamiento log/trigo. */
+        .cpu-test-02 {
+          --FpAmp-2: calc(
+            var(--FACTOR-AMPLIFICACION) * cos(
+              sqrt(
+                abs(
+                  log(
+                    tan(var(--PI-VAL) / 3.0001)
+                  )
+                )
+              )
+            ) + var(--BASE-PX)
+          );
+          width: var(--FpAmp-2);
+        }
+
+        /* Prueba 1.3: pow(asin(atan(...))) - Funciones inversas con exponente. */
+        .cpu-test-03 {
+          --FpAmp-3: calc(
+            var(--FACTOR-AMPLIFICACION) * pow(
+              asin(
+                atan(1 / 1.0000000001)
+              ),
+              2.718
+            ) + var(--BASE-PX)                                                                    );
+          width: var(--FpAmp-3);
+        }                                                                               
+        /* =========================================================================             * 2. PRUEBAS DE POTENCIA Y EXPONENCIALES
+         * ========================================================================= */ 
+        /* Prueba 2.1: pow() con base y exponente de punto flotante - Muy sensible. */
+        .cpu-test-04 {
+          --FpAmp-4: calc(                                                                          var(--FACTOR-AMPLIFICACION) * pow(
+              var(--E-VAL) / 3.0000000001,                                                            0.9999999
+            ) + var(--BASE-PX)                                                                    );
+          width: var(--FpAmp-4);                                                                }
+
+        /* Prueba 2.2: sin(hypot(pow(..., high_exponent))) - Uso de hypot. */
+        .cpu-test-05 {
+          --FpAmp-5: calc(
+            var(--FACTOR-AMPLIFICACION) * sin(
+              hypot(
+                pow(1.000000000001, 1000),
+                pow(1.000000000002, 500)
+              )
+            ) + var(--BASE-PX)
+          );
+          width: var(--FpAmp-5);
+        }
+
+        /* Prueba 2.3: log() de un valor extremadamente cercano a 1. */
+        .cpu-test-06 {
+          --FpAmp-6: calc(
+            var(--FACTOR-AMPLIFICACION) * log(
+              1 + 1e-15
+            ) + var(--BASE-PX)
+          );
+          width: var(--FpAmp-6);
+        }
+
+        /* =========================================================================
+         * 3. PRUEBAS CON REDONDEO Y SIGNO
+         * ========================================================================= */
+                                                                                                /* Prueba 3.1: round() después de una serie de pow anidados. */
+        .cpu-test-07 {                                                                            --FpAmp-7: calc(
+            round(
+              1px,                                                                                    var(--FACTOR-AMPLIFICACION) * pow(
+                pow(var(--PI-VAL), 0.1),                                                                3.14
+              )
+            ) + var(--BASE-PX)
+          );
+          width: var(--FpAmp-7);
+        }
+
+        /* Prueba 3.2: mod() con valores de alta precisión. */
+        .cpu-test-08 {
+          --FpAmp-8: calc(
+            var(--FACTOR-AMPLIFICACION) * mod(
+              tan(var(--PI-VAL) * 1.0000000001),
+              2.0000000002
+            ) + var(--BASE-PX)
+          );
+          width: var(--FpAmp-8);
+        }
+
+        /* Prueba 3.3: sign() aplicado a una expresión que casi es cero. */
+        .cpu-test-09 {
+          --FpAmp-9: calc(
+            var(--BASE-PX) + 10px * sign(
+              sin(var(--PI-VAL) - 1e-16)
+            )
+          );
+          width: var(--FpAmp-9);
+        }
+
+    </style>
+</head>
+<body>                                                                                  
+    <h1>PoC: Divergencia de Precisión en CSS `calc()`</h1>                                  <p>Abre esta página en navegadores con arquitectura **Intel** y **ARM** y compara los valores finales de **Width (px)**.</p>
+    <p>Una diferencia de 1px en el valor final (Renderizado) indica una divergencia en la precisión de la librería matemática de la CPU.</p>
+                                                                                            <div id="results">
+        </div>
+                                                                                            <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('results');                                   const tests = [
+                { id: 'cpu-test-01', description: 'Test 1.1: log(pow(sin(atan2(PI, ...))))' },
+                { id: 'cpu-test-02', description: 'Test 1.2: cos(sqrt(abs(log(tan(...)))))' },
+                { id: 'cpu-test-03', description: 'Test 1.3: pow(asin(atan(...)))' },
+                { id: 'cpu-test-04', description: 'Test 2.1: pow(E / X, Y) (Exponencial pesada)' },
+                { id: 'cpu-test-05', description: 'Test 2.2: sin(hypot(pow(..., 1000)))' },
+                { id: 'cpu-test-06', description: 'Test 2.3: log(1 + 1e-15)' },
+                { id: 'cpu-test-07', description: 'Test 3.1: round(..., pow(PI, ...))' },
+                { id: 'cpu-test-08', description: 'Test 3.2: mod(tan(...), ...)' },
+                { id: 'cpu-test-09', description: 'Test 3.3: sign(sin(PI - 1e-16))' }
+            ];
+
+            tests.forEach(test => {
+                const div = document.createElement('div');
+                div.className = test.id;
+                div.textContent = `${test.description} (Cargando...)`;
+                container.appendChild(div);
+
+                // Forzar el redibujado para asegurar la aplicación del CSS
+                void div.offsetWidth;
+
+                // Leer el ancho renderizado (offsetWidth) que es siempre un entero
+                const renderedWidth = div.offsetWidth;
+
+                // Usar getComputedStyle para intentar leer el valor decimal (menos fiable)
+                const computedStyle = window.getComputedStyle(div);
+                const computedWidth = computedStyle.width;
+
+                div.textContent = `${test.description} | Renderizado (offsetWidth): ${renderedWidth}px`;
+
+                // Muestra el valor que el navegador calculó internamente (puede ser decimal)
+                const computedWidthElement = document.createElement('small');
+                computedWidthElement.style.color = 'black';
+                computedWidthElement.style.marginLeft = '10px';
+                computedWidthElement.textContent = `CSS Computed: ${computedWidth}`;
+                div.appendChild(computedWidthElement);
+            });
+        });
+    </script>
+</body>
+</html>
